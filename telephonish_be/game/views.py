@@ -4,9 +4,11 @@ from rest_framework import status
 from .serializers import RoomSerializer
 from rest_framework.exceptions import APIException
 
+
 class RoomAlreadyExistsError(APIException):
     status_code = 403
     default_detail = 'room_already_exists'
+
 
 class RoomCreateView(APIView):
 
@@ -14,17 +16,19 @@ class RoomCreateView(APIView):
         serializer = RoomSerializer(data=request.data)
         if serializer.is_valid():
             # Get the new field values from the request data
-            one_sentence_story_round = request.data.get('selected_values', {}).get('oneSentenceStory', None)
-            drawing_round = request.data.get('selected_values', {}).get('drawing', None)
-            poem_round = request.data.get('selected_values', {}).get('poem', None)
-            dramatic_reading_round = request.data.get('selected_values', {}).get('dramaticReading', None)
-
+            selected_values = request.data.get('selected_values', {})
+            one_sentence_story_round = selected_values.get('oneSentenceStory', None)
+            drawing_round = selected_values.get('drawing', None)
+            poem_round = selected_values.get('poem', None)
+            dramatic_reading_round = selected_values.get('dramaticReading', None)
+            password = request.data.get('password', None)
             # Call serializer.save() with the new field values
             serializer.save(
                 one_sentence_story_round=one_sentence_story_round,
                 drawing_round=drawing_round,
                 poem_round=poem_round,
-                dramatic_reading_round=dramatic_reading_round
+                dramatic_reading_round=dramatic_reading_round,
+                password=password,
             )
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 

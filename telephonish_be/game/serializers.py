@@ -7,7 +7,8 @@ class RoomSerializer(serializers.ModelSerializer):
     drawing_round = serializers.BooleanField(required=False)
     poem_round = serializers.BooleanField(required=False)
     dramatic_reading_round = serializers.BooleanField(required=False)
+    password = serializers.CharField(required=False, trim_whitespace=True)
     class Meta:
         model = Room
-        fields = ['id', 'room_name', 'current_round_number', 'one_sentence_story_round', 'drawing_round', 'poem_round', 'dramatic_reading_round']
+        fields = ['id', 'room_name', 'current_round_number', 'one_sentence_story_round', 'drawing_round', 'poem_round', 'dramatic_reading_round', 'password']
 
