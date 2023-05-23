@@ -9,5 +9,5 @@ class Player(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['name', 'room'], name='unique_spectator_name_in_room')
+            models.UniqueConstraint(fields=['name', 'room'], name='unique_player_name_in_room')
         ]
