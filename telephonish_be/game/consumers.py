@@ -9,64 +9,64 @@ from .models.room import Room
 
 import json
 from collections import defaultdict
+import logging
+import secrets
 
+logger = logging.getLogger(__name__)
 
 class GameRoomConsumer(AsyncWebsocketConsumer):
     room_connection_counts = defaultdict(lambda: 0)
     room_password_cache = {}
+    player_tokens = {}
 
     async def connect(self):
         self.room_id = self.scope['url_route']['kwargs']['room_id']
         self.room_group_id = f'game_{self.room_id}'
+        self.player_name = self.scope['url_route']['kwargs']['username']
         provided_password = self.scope['url_route']['kwargs'].get('room_password')
 
-        connection_accepted = False
+        self.room_connection_counts[self.room_id] += 1
+        logger.info("Connection Count: %d", self.room_connection_counts[self.room_id])
 
         try:
-            self.room_connection_counts[self.room_id] += 1
+            logger.info("authenticating room password")
+            authenticated = await self.authenticate_room_password(provided_password)
 
-            if self.room_id in self.room_password_cache:
-                # Check password
-                if not check_password(provided_password, self.room_password_cache[self.room_id]):
-                    raise DenyConnection()
-            else:
-                # Add expected password to cache
-                room = await database_sync_to_async(Room.objects.get)(id=self.room_id)
-                self.room_password_cache[self.room_id] = room.password
-                # Check password
-                if not check_password(provided_password, self.room_password_cache[self.room_id]):
-                    raise DenyConnection()
+            if authenticated:
+                # Add player to DB
+                logger.info("adding player")
+                self.player = await database_sync_to_async(
+                    Player.objects.create
+                )(room_id=self.room_id, name=self.player_name)
 
-            self.player_name = self.scope['url_route']['kwargs']['username']
+                # Generate and store token
+                logger.info("generating token")
+                self.player_token = await self.generate_player_token()
 
-            # Add player to DB
-            self.player, _ = await database_sync_to_async(
-                Player.objects.get_or_create
-            )(room_id=self.room_id, name=self.player_name)
+                # Join room group
+                logger.info("joining room")
+                await self.channel_layer.group_add(
+                    self.room_group_id,
+                    self.channel_name
+                )
 
-            # Join room group
-            await self.channel_layer.group_add(
-                self.room_group_id,
-                self.channel_name
-            )
+                # Send message to room group
+                await self.channel_layer.group_send(
+                    self.room_group_id,
+                    {
+                        'type': 'player_connect',
+                        'message': f'{self.player_name} has joined the game room.'
+                    }
+                )
 
-            # Send message to room group
-            await self.channel_layer.group_send(
-                self.room_group_id,
-                {
-                    'type': 'player_connect',
-                    'message': f'{self.player_name} has joined the game room.'
-                }
-            )
+                logger.info("accepting connection")
+                await self.accept()
 
-            await self.accept()
-            connection_accepted = True
-            print("Connection Count:", self.room_connection_counts[self.room_id])
+                logger.info("sending token to client")
+                await self.send_player_token()
 
-        finally:
-            # Decrement connection count if accept() was not called
-            if not connection_accepted:
-                self.room_connection_counts[self.room_id] -= 1
+        except Exception as err:
+            logger.error(err)
 
     async def disconnect(self, close_code):
 
@@ -75,7 +75,8 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
             self.room_group_id,
             self.channel_name
         )
-        try:
+
+        if hasattr(self, "player"):
             # Delete player from DB
             await database_sync_to_async(self.player.delete)()
 
@@ -87,12 +88,19 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
                     'message': f'{self.player_name} has left the game room.'
                 }
             )
-        except AttributeError:
-            pass
 
+            # Remove auth token
+            try:
+                # Delete player token
+                del self.player_tokens[self.player_token]
+            except KeyError:
+                pass
 
-        self.room_connection_counts[self.room_id] -= 1
-        print("Connection Count:", self.room_connection_counts[self.room_id])
+        self.room_connection_counts[self.room_id] = max(
+            self.room_connection_counts[self.room_id] - 1,
+            0
+        )
+        logger.info("Connection Count: %d", self.room_connection_counts[self.room_id])
         # TODO: Clean up room if no connections remain
 
     async def receive(self, text_data):
@@ -108,14 +116,49 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
             }
         )
 
-    async def send_error_response(self, error_message):
-        error_data = {
-            'type': 'error',
-            'message': error_message
+    async def authenticate_room_password(self, provided_password):
+        if self.room_id in self.room_password_cache:
+            # Check password
+            if not check_password(provided_password, self.room_password_cache[self.room_id]):
+                await self.accept_and_close_with_message("invalid_room_password")
+                return False
+
+        else:
+            # Add expected password to cache
+            room = await database_sync_to_async(Room.objects.get)(id=self.room_id)
+            self.room_password_cache[self.room_id] = room.password
+            # Check password
+            if not check_password(provided_password, self.room_password_cache[self.room_id]):
+                await self.accept_and_close_with_message("invalid_room_password")
+                return False
+        return True
+
+    async def generate_player_token(self):
+        token = secrets.token_hex(16)
+        self.player_tokens[token] = {
+            'name': self.player_name,
+            'room_id': self.room_id
         }
-        await self.send(text_data=json.dumps(error_data))
-        await self.close()
+        return token
+
+    async def send_player_token(self):
+        token_data = {
+            'type': 'player_token',
+            'token': self.player_token
+        }
+        await self.send(text_data=json.dumps(token_data))
+
     # Message Definitions
+
+    async def accept_and_close_with_message(self, message):
+        await self.accept()
+        bad_authentication_data = {
+            'type': 'connection_closed',
+            'message': message,
+        }
+        await self.send(text_data=json.dumps(bad_authentication_data))
+        await self.close()
+
     async def game_message(self, event):
         username = event['username']
         message = event['message']
