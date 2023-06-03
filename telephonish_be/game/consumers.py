@@ -230,10 +230,12 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
             elif message_type == "done_writing_story":
                 self.room_players_done_story[self.room_id].add(self.player_name)
                 if len(self.room_players_done_story[self.room_id]) == self.room_connection_counts[self.room_id]:
+                    await self.increment_room_round_number(self.room_id)
                     should_send = True
             elif message_type == "done_drawing":
                 self.room_players_done_drawing[self.room_id].add(self.player_name)
                 if len(self.room_players_done_drawing[self.room_id]) == self.room_connection_counts[self.room_id]:
+                    await self.increment_room_round_number(self.room_id)
                     should_send = True
 
             if should_send:
