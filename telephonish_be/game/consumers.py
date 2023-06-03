@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 class GameRoomConsumer(AsyncWebsocketConsumer):
     room_connection_counts = defaultdict(lambda: 0)
     room_players_ready_to_start = defaultdict(set)
+    room_players_done_story = defaultdict(set)
+    room_players_done_drawing = defaultdict(set)
 
     room_password_not_required = set()
     room_password_cache = {}
@@ -147,7 +149,8 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
     async def send_player_token(self):
         token_data = {
             'type': 'player_token',
-            'token': self.player_token
+            'token': self.player_token,
+            'player_id': self.player.id
         }
         await self.send(text_data=json.dumps(token_data))
 
@@ -198,9 +201,40 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
         message = event['message']
 
         self.room_players_ready_to_start[self.room_id].add(player_name)
-        if len(self.room_players_ready_to_start[self.room_id]) == self.room_connection_counts[self.room_id]:
+        if (
+            len(self.room_players_ready_to_start[self.room_id]) > 1
+            and len(self.room_players_ready_to_start[self.room_id]) == self.room_connection_counts[self.room_id]
+        ):
             await self.send(text_data=json.dumps({
                 'type': 'ready_to_start',
+                'player_name': player_name,
+                'message': message
+            }))
+
+    async def done_writing_story(self, event):
+        logger.info(event)
+
+        player_name = event['player_name']
+        message = event['message']
+
+        self.room_players_done_story[self.room_id].add(player_name)
+        if len(self.room_players_done_story[self.room_id]) == self.room_connection_counts[self.room_id]:
+            await self.send(text_data=json.dumps({
+                'type': 'done_writing_story',
+                'player_name': player_name,
+                'message': message
+            }))
+
+    async def done_drawing(self, event):
+        logger.info(event)
+
+        player_name = event['player_name']
+        message = event['message']
+
+        self.room_players_done_drawing[self.room_id].add(player_name)
+        if len(self.room_players_done_drawing[self.room_id]) == self.room_connection_counts[self.room_id]:
+            await self.send(text_data=json.dumps({
+                'type': 'done_drawing',
                 'player_name': player_name,
                 'message': message
             }))

@@ -5,9 +5,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import APIException
 
+import random
+from xkcdpass import xkcd_password as xp
+
 from telephonish_be.game.serializers import RoomSerializer
 from telephonish_be.game.models.room import Room
 from telephonish_be.game.models.player import Player
+from telephonish_be.game.gameplay import (
+    get_round_order_for_room,
+    get_player_series_for_room,
+)
 
 class RoomAlreadyExistsError(APIException):
     status_code = 403
@@ -22,7 +29,6 @@ class RoomDoesNotExistError(APIException):
 class InvalidPasswordError(APIException):
     status_code = 403
     default_detail = 'invalid_password_provided'
-
 
 
 class RoomCreateView(APIView):
@@ -49,12 +55,13 @@ class RoomCreateView(APIView):
         if 'room_name' in serializer.errors:
             if serializer.errors['room_name'][0].code == 'unique':
                 raise RoomAlreadyExistsError
-            
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RoomJoinView(APIView):
     """Deprecated"""
+
     def post(self, request):
         data = request.data
         room_name = data.get("game_room_name")
@@ -90,7 +97,6 @@ class RoomJoinView(APIView):
             raise RoomDoesNotExistError
 
 
-
 class GetRoomDataView(APIView):
     def get(self, request, room_name):
         try:
@@ -118,6 +124,25 @@ class GetRoomDataView(APIView):
 
         return JsonResponse(data)
 
+
+class GetGameplayDataView(APIView):
+    def get(self, request, room_name):
+        try:
+            room_instance = Room.objects.get(room_name=room_name)
+        except Room.DoesNotExist:
+            return JsonResponse({'error': 'Room does not exist'})
+
+        round_order = get_round_order_for_room(room_instance)
+        player_series = get_player_series_for_room(room_instance)
+
+        data = {
+            "round_order": round_order,
+            "player_series": player_series,
+        }
+
+        return JsonResponse(data)
+
+
 class CheckPasswordRequirementView(APIView):
     def get(self, request, room_name):
         try:
@@ -128,4 +153,41 @@ class CheckPasswordRequirementView(APIView):
             return JsonResponse({'error': 'Room does not exist'})
 
 
+class GenerateRoomNameView(APIView):
+    def get(self, request):
+        random_room_name = generate_room_name()
+        return JsonResponse(
+            {'random_room_name': random_room_name}
+        )
 
+
+class GeneratePlayerNameView(APIView):
+    def get(self, request):
+        random_player_name = generate_player_name()
+        return JsonResponse(
+            {'random_player_name': random_player_name}
+        )
+
+
+# TODO: Move to utils
+word_file = xp.locate_wordfile()
+words = xp.generate_wordlist(wordfile=word_file, min_length=5, max_length=8)
+
+
+def generate_room_name():
+    return xp.generate_xkcdpassword(words, numwords=4).title().replace(" ", "")
+
+
+def generate_player_name(max_length=20):
+    num_words = random.randint(1, 2)
+    cases = [
+        str.upper,
+        str.title,
+        str.lower,
+    ]
+    name_words = xp.generate_xkcdpassword(wordlist=words, numwords=num_words)
+    name = "".join([random.choice(cases)(word) for word in name_words.split()])[:max_length]
+    remaining_characters = max_length - len(name_words)
+    for _ in range(random.randint(1, min(remaining_characters, 5))):
+        name += str(random.randint(0, 9))
+    return name
