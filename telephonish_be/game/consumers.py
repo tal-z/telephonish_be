@@ -102,12 +102,23 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
             except KeyError:
                 pass
 
+            # Clear room-related data
+            self.room_players_ready_to_start[self.room_id].discard(self.player_name)
+            self.room_players_done_story[self.room_id].discard(self.player_name)
+            self.room_players_done_drawing[self.room_id].discard(self.player_name)
+
+        # Decrement room connection count
         self.room_connection_counts[self.room_id] = max(
             self.room_connection_counts[self.room_id] - 1,
             0
         )
         logger.info("Connection Count: %d", self.room_connection_counts[self.room_id])
-        # TODO: Clean up room if no connections remain
+
+        # Clean up room if no connections remain
+        if self.room_connection_counts[self.room_id] == 0:
+            await self.clean_up_room()
+
+        await self.close()
 
     async def authenticate_room_password(self, provided_password):
         if self.room_id in self.room_password_not_required:
@@ -175,6 +186,27 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps(bad_authentication_data))
         await self.close()
 
+    async def clean_up_room(self):
+        # Perform any necessary cleanup operations for the room
+        room_id = self.room_id
+
+        # Delete the room from the database
+        # await database_sync_to_async(Room.objects.filter(id=room_id).delete)()
+
+        # Clear any cached room password
+        if room_id in self.room_password_cache:
+            del self.room_password_cache[room_id]
+
+        # Clear room-related data
+        del self.room_players_ready_to_start[room_id]
+        del self.room_players_done_story[room_id]
+        del self.room_players_done_drawing[room_id]
+
+        # Optionally, perform additional cleanup tasks specific to your application
+
+        logger.info("Room %s has been cleaned up.", room_id)
+
+    # Receiver Logic
     async def receive(self, text_data):
         logger.info(text_data)
 
