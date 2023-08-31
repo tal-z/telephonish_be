@@ -138,6 +138,7 @@ class GetGameplayDataView(APIView):
         data = {
             "round_order": round_order,
             "player_series": player_series,
+            "current_round_number": room_instance.current_round_number,
         }
 
         return JsonResponse(data)
