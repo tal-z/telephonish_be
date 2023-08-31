@@ -13,6 +13,7 @@ from .views.prompt_views import (
     SubmitDrawingView,
     GetStoryView,
     GetDrawingView,
+    GetPoemView
 )
 
 
@@ -23,6 +24,7 @@ urlpatterns = [
     path('get-password-requirement/<str:room_name>', CheckPasswordRequirementView.as_view()),
     path('get-story/', GetStoryView.as_view(), name='get_story'),
     path('get-drawing/', GetDrawingView.as_view(), name='get_drawing'),
+    path('get-poem/', GetPoemView.as_view(), name='get_drawing'),
     path('generate-room-name', GenerateRoomNameView.as_view()),
     path('generate-player-name', GeneratePlayerNameView.as_view()),
     # POST

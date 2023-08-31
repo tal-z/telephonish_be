@@ -27,6 +27,29 @@ class SubmitPoemView(APIView):
         return JsonResponse({"errors": form.errors}, status=400)
 
 
+class GetPoemView(APIView):
+
+    def get(self, request):
+        player_id = request.GET.get("player")
+        room = request.GET.get("room")
+        round_number = request.GET.get("round_number")
+
+        try:
+            poem = Poem.objects.get(player_id=player_id, room=room, round_number=round_number)
+            data = {
+                "poem_id": poem.id,
+                "story_player_id": poem.player.id,
+                "room_id": poem.room.id,
+                "story_round_number": poem.round_number,
+                "poem_text": poem.poem,
+            }
+            return JsonResponse(data)
+        except Story.DoesNotExist:
+            return JsonResponse({"error": "Story not found."}, status=404)
+        except Player.DoesNotExist:
+            return JsonResponse({"error": "Story Player not found."}, status=404)
+
+
 class StoryForm(forms.ModelForm):
     class Meta:
         model = Story
@@ -48,12 +71,12 @@ class SubmitStoryView(APIView):
 class GetStoryView(APIView):
 
     def get(self, request):
-        player = request.GET.get("player")
+        player_id = request.GET.get("player")
         room = request.GET.get("room")
         round_number = request.GET.get("round_number")
 
         try:
-            story = Story.objects.get(player=player, room=room, round_number=round_number)
+            story = Story.objects.get(player_id=player_id, room=room, round_number=round_number)
             data = {
                 "story_id": story.id,
                 "story_player_id": story.player.id,

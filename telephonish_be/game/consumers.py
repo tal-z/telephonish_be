@@ -20,6 +20,7 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
     room_players_ready_to_start = defaultdict(set)
     room_players_done_story = defaultdict(set)
     room_players_done_drawing = defaultdict(set)
+    room_players_done_poem = defaultdict(set)
 
     room_password_not_required = set()
     room_password_cache = {}
@@ -106,6 +107,7 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
             self.room_players_ready_to_start[self.room_id].discard(self.player_name)
             self.room_players_done_story[self.room_id].discard(self.player_name)
             self.room_players_done_drawing[self.room_id].discard(self.player_name)
+            self.room_players_done_poem[self.room_id].discard(self.player_name)
 
         # Decrement room connection count
         self.room_connection_counts[self.room_id] = max(
@@ -201,6 +203,7 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
         del self.room_players_ready_to_start[room_id]
         del self.room_players_done_story[room_id]
         del self.room_players_done_drawing[room_id]
+        del self.room_players_done_poem[room_id]
 
         # Optionally, perform additional cleanup tasks specific to your application
 
@@ -232,11 +235,21 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
                 if len(self.room_players_done_story[self.room_id]) == self.room_connection_counts[self.room_id]:
                     await self.increment_room_round_number(self.room_id)
                     should_send = True
+                    self.room_players_done_story[self.room_id] = set()
+
             elif message_type == "done_drawing":
                 self.room_players_done_drawing[self.room_id].add(self.player_name)
                 if len(self.room_players_done_drawing[self.room_id]) == self.room_connection_counts[self.room_id]:
                     await self.increment_room_round_number(self.room_id)
                     should_send = True
+                    self.room_players_done_drawing[self.room_id] = set()
+
+            elif message_type == "done_poem":
+                self.room_players_done_poem[self.room_id].add(self.player_name)
+                if len(self.room_players_done_poem[self.room_id]) == self.room_connection_counts[self.room_id]:
+                    await self.increment_room_round_number(self.room_id)
+                    should_send = True
+                    self.room_players_done_poem[self.room_id] = set()
 
             if should_send:
                 await self.channel_layer.group_send(
@@ -281,6 +294,18 @@ class GameRoomConsumer(AsyncWebsocketConsumer):
 
         await self.send(text_data=json.dumps({
             'type': 'done_drawing',
+            'player_name': player_name,
+            'message': message
+        }))
+
+    async def done_poem(self, event):
+        logger.info(event)
+
+        player_name = event['player_name']
+        message = event['message']
+
+        await self.send(text_data=json.dumps({
+            'type': 'done_poem',
             'player_name': player_name,
             'message': message
         }))
